@@ -1,0 +1,66 @@
+{
+  "verdict": "pass",
+  "score": 4,
+  "summary": "A cloneable, seasonal novelty riding Spotify Wrapped's brand, with no evidence of demand and no support for the $12–$25 per-group price. A new build also waits behind the distribution-first hold, and the December window is short.",
+  "forcingQuestions": {
+    "demand": {
+      "score": 3,
+      "evidence": "Only proof is Wrapped's reach (TechCrunch) and the existence of near-copies (Yapd, ZapZipped, WA Wrapped). No first-hand complaints found; Friend Wrapped has 2 ratings."
+    },
+    "statusQuo": {
+      "score": 4,
+      "evidence": "Chat-export wraps, polls and Etsy/eBay group gifts exist, but competitors give wraps away free and paid comparables are individual (~€6, $3.99/week)."
+    },
+    "specificity": {
+      "score": 3,
+      "evidence": "'Organizer of a friend group of 4-12' is a category; no named person or real consequence."
+    },
+    "wedge": {
+      "score": 6,
+      "evidence": "Invite link, 5 prompts, one AI award each ships in a weekend, but the paid HD unlock is a thin lever over a free preview."
+    },
+    "futureFit": {
+      "score": 3,
+      "evidence": "ChatGPT year-end review normalizes the format, platforms can add group versions, no moat, and demand collapses after December."
+    }
+  },
+  "premises": [
+    "Friend groups want a Wrapped of their own (unverified)",
+    "Friends will fill in prompts from the organizer's link (unproven, 10-40% from unrelated surveys)",
+    "An organizer will pay $12-$25 per group (unsupported; comparables are free or cheaper)",
+    "A 'make yours' credit creates a viral loop (guess)",
+    "A late-November launch is feasible (technically yes, window is about 3-4 weeks)"
+  ],
+  "alternatives": [
+    "Minimal: free-only page with no payments, to test completion only",
+    "Ideal: full product with story renders, yearbook, Stripe and deletion job on a commercial-use host",
+    "Extend tiebreak (David's viral poll idea, the growth focus) with an award-per-person feature",
+    "Lateral: sell a prompt template pack on Etsy to test willingness to pay at $0 build cost"
+  ],
+  "wedge": "A page where the organizer pastes 3-8 friends' answers collected by hand and gets one text award per friend. No link flow, no payments.",
+  "feasibility": {
+    "m1Weekend": true,
+    "zeroCost": true,
+    "notes": "Next.js on Vercel Hobby, Supabase free, free model via LiteLLM. Taking payments (M4) needs a commercial-use host, which Vercel Hobby doesn't allow. Test for M1: generate with 3 submissions returns exactly 3 awards; a malformed model response returns 502 and stores nothing."
+  },
+  "risks": [
+    "Seasonality: the earning window is about December",
+    "Unknown fill-in rate; awards go thin below 3 respondents",
+    "Copycat and platform risk",
+    "Content safety, photos and takedown burden for a solo operator",
+    "Free competitors cap the price",
+    "New builds are held until tiebreak has traction"
+  ],
+  "killCriteria": "Drop if after 14 days fewer than 50 visitors are judged, signup rate is under 5%, or no organizer says they'd pay when asked; also drop if launch can't happen before about Dec 1.",
+  "landing": {
+    "headline": "",
+    "subhead": "",
+    "bullets": [],
+    "cta": "",
+    "audience": ""
+  },
+  "launch": {
+    "channels": [],
+    "post": ""
+  }
+}

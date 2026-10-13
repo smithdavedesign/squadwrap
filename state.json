@@ -1,0 +1,17 @@
+{
+  "stage": "build",
+  "review": {
+    "verdict": "pass",
+    "score": 4,
+    "summary": "A cloneable, seasonal novelty riding Spotify Wrapped's brand, with no evidence of demand and no support for the $12–$25 per-group price. A new build also waits behind the distribution-first hold, and the December window is short.",
+    "at": "2026-10-13T06:29:40.990Z",
+    "notionAt": "2026-10-13T06:29:42.454Z"
+  },
+  "updatedAt": "2026-10-13T07:58:50.014Z",
+  "ownerApproved": true,
+  "ownerDecision": {
+    "decision": "build",
+    "at": "2026-10-13T07:58:50.014Z",
+    "source": "repohq"
+  }
+}
