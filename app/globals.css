@@ -282,6 +282,21 @@ label.check input {
   margin-bottom: 0;
 }
 
+/* The Buy link looks like the main button. */
+.button-buy {
+  display: inline-block;
+  padding: 0.7rem 1.2rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0b0b0b;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.button-buy + p {
+  margin-top: 0.75rem;
+}
+
 .site-footer {
   max-width: 40rem;
   margin: 0 auto;

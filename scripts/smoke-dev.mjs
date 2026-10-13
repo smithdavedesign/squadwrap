@@ -30,13 +30,14 @@ const model = createServer((req, res) => {
 
 const dev = spawn('node_modules/.bin/next', ['dev', '-p', String(APP_PORT), '-H', '127.0.0.1'], {
   // An empty DATABASE_URL keeps the run on the local PGlite database, and an empty STRIPE_SECRET_KEY keeps it away
-  // from Stripe, whatever the shell has set.
+  // from Stripe, whatever the shell has set. The payment link is a placeholder, so the Buy button shows.
   env: {
     ...process.env,
     LLM_BASE_URL: `http://127.0.0.1:${MODEL_PORT}/v1`,
     LLM_MODEL: 'stub',
     DATABASE_URL: '',
     STRIPE_SECRET_KEY: '',
+    STRIPE_PAYMENT_LINK: 'https://example.com/pay',
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     CRON_SECRET,
   },
@@ -137,7 +138,10 @@ try {
   check('organizer page yearbook section', dash.data.includes('Share the yearbook'))
 
   // M4: payment and safety, over real HTTP (the webhook's raw body is what Next.js hands the route).
-  check('organizer page offers the unlock', dash.data.includes('Unlock for $12') && dash.data.includes('is deleted on'))
+  check(
+    'organizer page offers the unlock (Buy, through the payment link)',
+    dash.data.includes(`href="https://example.com/pay?client_reference_id=${id}"`) && dash.data.includes('is deleted on'),
+  )
   const checkout = await http('POST', `/groups/${id}/checkout`)
   check('checkout without a Stripe key → 503', checkout.status === 503 && checkout.data.error?.code === 'payments_not_configured', String(checkout.status))
   const event = JSON.stringify({

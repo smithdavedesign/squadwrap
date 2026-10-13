@@ -1,15 +1,21 @@
 import type { Metadata } from 'next'
 import { LIMITS, UNLOCK_PRICE } from '../../lib/prompts'
+import { ISSUES_URL, JsonLd, publicPageMetadata } from '../../lib/site'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = publicPageMetadata({
   title: 'Terms · squadwrap',
-  description: 'Who can use squadwrap, what the unlock buys, refunds and takedowns.',
-}
+  description: `Who can use squadwrap, what the ${UNLOCK_PRICE.label} unlock buys, refunds on request, takedowns, and no warranty.`,
+  path: '/terms',
+})
 
-/** Kept in step with the code: 18+ (lib/squad.ts), the price (lib/prompts.ts), the cleanup job and the report form. */
+/**
+ * Kept in step with the code and REVENUE.md: 18+ (lib/squad.ts), the price and the refund line (lib/prompts.ts),
+ * the cleanup job and the report form.
+ */
 export default function TermsPage() {
   return (
     <article className="legal">
+      <JsonLd />
       <h1>Terms</h1>
       <p className="lead">Short version: adults only, be kind, only post yourself, and ask us if anything goes wrong.</p>
 
@@ -36,16 +42,16 @@ export default function TermsPage() {
       <h2>The unlock</h2>
       <p>
         Making the awards, the yearbook and the slides is free; free slides carry a “PREVIEW” watermark. The organizer can
-        pay <strong>{UNLOCK_PRICE.label}</strong> once to take the watermark off every slide of that one group, including
-        slides of awards remade later. It isn’t a subscription. The unlock lasts as long as the group: until it is deleted,{' '}
-        {LIMITS.retentionDays} days after it was made, so it isn’t sold in a group’s last {LIMITS.unlockCutoffDays} days.
-        Payments are handled by Stripe.
+        pay <strong>{UNLOCK_PRICE.label} once per group</strong> to take the watermark off every slide of that one group,
+        including slides of awards remade later. It isn’t a subscription. The unlock lasts as long as the group: until it
+        is deleted, {LIMITS.retentionDays} days after it was made, so it isn’t sold in a group’s last{' '}
+        {LIMITS.unlockCutoffDays} days. Payments are handled by Stripe.
       </p>
 
       <h2>Refunds</h2>
       <p>
-        If the unlock didn’t work, or you changed your mind, ask for a refund within 14 days of paying and you get the full{' '}
-        {UNLOCK_PRICE.label} back, no questions asked. Write to the support address on your Stripe receipt.
+        Refund on request, no questions asked: you get the full {UNLOCK_PRICE.label} back. Write to the support address on
+        your Stripe receipt.
       </p>
 
       <h2 id="report">Reports and takedowns</h2>
@@ -61,10 +67,16 @@ export default function TermsPage() {
         reports. See <a href="/privacy">privacy</a> for what is stored and who sees it.
       </p>
 
-      <h2>No guarantees</h2>
+      <h2>No warranty</h2>
       <p>
-        squadwrap is a small app, provided as it is. It may change or stop; if it stops before a paid group’s deletion
-        date, ask for a refund as above.
+        squadwrap is a small app, provided as it is, without warranty of any kind: it may have bugs, the awards may miss
+        the mark, and it may change or stop. If it stops before a paid group’s deletion date, ask for a refund as above.
+      </p>
+
+      <h2 id="contact">Contact</h2>
+      <p>
+        For anything else, open an issue on <a href={ISSUES_URL}>squadwrap’s GitHub</a>. Issues are public: never post a
+        group’s links, anyone’s name or a photo there.
       </p>
     </article>
   )

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { nudgeText } from '../../../lib/nudge'
 import { LIMITS, UNLOCK_PRICE } from '../../../lib/prompts'
+import { signalActivate, signalCheckout } from '../../../lib/signal'
 
 /** The full URL for a path. It needs the browser's origin, which the server render doesn't know. */
 function useAbsoluteUrl(path: string): string {
@@ -59,6 +60,35 @@ export function Nudge(props: { groupName: string; year: number; answered: string
         {copied ? 'Copied!' : 'Copy message'}
       </button>
     </div>
+  )
+}
+
+/**
+ * Buy: the Stripe Payment Link with this group attached (lib/payments.ts paymentLinkFor); the webhook unlocks the
+ * group once paid. A new tab, so this page (the organizer's only key) stays open to come back to.
+ */
+export function BuyButton({ href }: { href: string }) {
+  const [opened, setOpened] = useState(false)
+  return (
+    <>
+      <a
+        className="button-buy"
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => {
+          signalCheckout()
+          setOpened(true)
+        }}
+      >
+        Buy the unlock, {UNLOCK_PRICE.label}
+      </a>
+      {opened && (
+        <p className="muted small" role="status">
+          Finish paying in Stripe’s tab. Once Stripe confirms the payment, refresh this page: it says “Unlocked”.
+        </p>
+      )}
+    </>
   )
 }
 
@@ -155,6 +185,8 @@ export function GenerateButton({ groupId, missing, hasAwards }: { groupId: strin
       setError(data?.error?.message ?? 'Could not make the awards. Try again.')
       return
     }
+    // Making awards is the core action: RepoHQ counts this browser's first one (lib/signal.ts).
+    signalActivate()
     router.refresh()
   }
 

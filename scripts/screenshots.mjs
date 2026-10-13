@@ -1,13 +1,16 @@
 // Screenshot proof: `npm run screenshots` (not part of `npm test`).
 // Builds the app, starts the production server (`next start`) on a throwaway local PGlite database with a stub
-// AI model, then drives it with Playwright's Chromium (CHROMIUM_PATH; no browser is ever downloaded):
-//   home      the start page
+// AI model and a placeholder payment link, checks the launch tags over real HTTP (titles, descriptions, canonical
+// URLs, Open Graph and Twitter tags, JSON-LD, robots.txt, sitemap.xml, the share image, saved to .data/ for a look),
+// then drives it with Playwright's Chromium (CHROMIUM_PATH; no browser is ever downloaded):
+//   home      the start page, with the footer (privacy, terms, report)
 //   join      a friend answering the prompts, photo added and the 18+ box ticked (then sending)
-//   awards    the organizer clicking "Make the awards": the awards, the slide downloads and the $12 unlock
+//   awards    the organizer clicking "Make the awards": the awards, the slide downloads and the $6 Buy button
 // each at 1280×800 and on an iPhone 13, viewport only, into docs/screenshots/. Sample people, drawn avatars and
 // local throwaway links only; the link fields are masked anyway. Stops everything and exits non-zero on failure.
+// Chromium sets navigator.webdriver, so no RepoHQ signal is sent (nor would a local build send one).
 import { spawn } from 'node:child_process'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { chromium, devices } from 'playwright-core'
 import sharp from 'sharp'
@@ -17,6 +20,11 @@ const MODEL_PORT = 4198
 const APP = `http://127.0.0.1:${APP_PORT}`
 const OUT = 'docs/screenshots'
 const DB_DIR = '.data/screenshots-pglite'
+// What Vercel would set: the production domain (a reserved example name here), for build and server alike.
+const SITE_ENV = { VERCEL_PROJECT_PRODUCTION_URL: 'squadwrap.example' }
+const SITE = 'https://squadwrap.example'
+// A placeholder, so the Buy button shows; nothing is ever bought.
+const PAYMENT_LINK = 'https://example.com/pay'
 
 const FRIENDS = {
   Ana: {
@@ -137,6 +145,53 @@ async function post(path, body) {
   return data
 }
 
+function check(ok, what) {
+  if (!ok) throw new Error(`launch check failed: ${what}`)
+}
+
+/** The content of `<meta name|property="key">` in `html` (Next writes the attribute before content). */
+function meta(html, key) {
+  return html.match(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`))?.[1]
+}
+
+/** The launch tags as the production server sends them (the unit tests only see the metadata objects). */
+async function checkLaunchTags(inviteToken) {
+  const titles = new Set()
+  for (const path of ['/', '/privacy', '/terms']) {
+    const html = await (await fetch(APP + path)).text()
+    const title = html.match(/<title>([^<]+)<\/title>/)?.[1]
+    check(title && !titles.has(title), `${path}: a unique <title>`)
+    titles.add(title)
+    check(meta(html, 'description'), `${path}: meta description`)
+    const canonical = html.match(/<link rel="canonical" href="([^"]*)"/)?.[1]
+    check(canonical?.replace(/\/$/, '') === SITE + (path === '/' ? '' : path), `${path}: canonical URL`)
+    for (const key of ['og:title', 'og:description', 'og:url', 'og:site_name', 'og:type', 'twitter:title', 'twitter:description']) {
+      check(meta(html, key), `${path}: ${key}`)
+    }
+    check(meta(html, 'og:image')?.startsWith(`${SITE}/opengraph-image`), `${path}: og:image`)
+    check(meta(html, 'og:image:width') === '1200' && meta(html, 'og:image:height') === '630', `${path}: og:image is 1200×630`)
+    check(meta(html, 'twitter:card') === 'summary_large_image', `${path}: twitter:card`)
+    check(meta(html, 'twitter:image')?.startsWith(`${SITE}/opengraph-image`), `${path}: twitter:image`)
+    const ld = JSON.parse(html.match(/<script type="application\/ld\+json">([^<]*)<\/script>/)?.[1] ?? 'null')
+    check(ld?.['@type'] === 'SoftwareApplication' && ld.offers?.price === '6.00' && ld.offers.priceCurrency === 'USD', `${path}: JSON-LD`)
+  }
+  const robots = await (await fetch(APP + '/robots.txt')).text()
+  check(robots.includes('Allow: /') && robots.includes(`Sitemap: ${SITE}/sitemap.xml`), 'robots.txt')
+  const sitemap = await (await fetch(APP + '/sitemap.xml')).text()
+  check(['/', '/privacy', '/terms'].every((p) => sitemap.includes(`<loc>${SITE}${p}</loc>`)), 'sitemap.xml lists the public pages')
+  const image = await fetch(APP + '/opengraph-image')
+  const bytes = Buffer.from(await image.arrayBuffer())
+  const { width, height, format } = await sharp(bytes).metadata()
+  check(image.ok && format === 'png' && width === 1200 && height === 630, '/opengraph-image is a 1200×630 PNG')
+  await mkdir('.data', { recursive: true })
+  await writeFile('.data/share-image.png', bytes)
+  // A private-link page: kept out of search engines, and no canonical URL pointing at someone's key.
+  const invite = await fetch(`${APP}/join/${inviteToken}`)
+  const inviteHtml = await invite.text()
+  check(invite.headers.get('x-robots-tag') === 'noindex, nofollow' && !inviteHtml.includes('rel="canonical"'), 'invite page: noindex, no canonical')
+  console.log('Launch tags checked over HTTP; share image saved to .data/share-image.png')
+}
+
 /** Scrolls so `selector` sits just below the top of the viewport. */
 async function scrollTo(page, selector) {
   await page.locator(selector).first().evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 20))
@@ -151,7 +206,8 @@ try {
   await mkdir(OUT, { recursive: true })
 
   console.log('Building…')
-  const build = run('node_modules/.bin/next', ['build'])
+  // Not a preview or production deployment: the RepoHQ signal stays off in this build.
+  const build = run('node_modules/.bin/next', ['build'], { ...SITE_ENV, NEXT_PUBLIC_VERCEL_ENV: '' })
   if ((await exited(build)) !== 0) throw new Error('next build failed')
 
   await new Promise((resolve) => model.listen(MODEL_PORT, '127.0.0.1', resolve))
@@ -163,7 +219,8 @@ try {
     LLM_MODEL: 'stub',
     LLM_API_KEY: '',
     STRIPE_SECRET_KEY: '',
-    VERCEL_PROJECT_PRODUCTION_URL: 'squadwrap.app',
+    STRIPE_PAYMENT_LINK: PAYMENT_LINK,
+    ...SITE_ENV,
   })
   await waitForApp()
 
@@ -173,6 +230,7 @@ try {
     const photo = `data:image/jpeg;base64,${(await avatar(FRIENDS[name])).toString('base64')}`
     await post(`/join/${group.inviteToken}/submissions`, { displayName: name, answers: FRIENDS[name].answers, photo, adult: true })
   }
+  await checkLaunchTags(group.inviteToken)
 
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH })
   const sizes = { desktop: { viewport: { width: 1280, height: 800 } }, mobile: devices['iPhone 13'] }
@@ -206,7 +264,9 @@ try {
       await page.getByRole('button', { name: 'Make the awards' }).click()
       await page.getByText('Download slide').first().waitFor({ timeout: 30_000 })
     }
-    await page.getByRole('button', { name: 'Unlock for $12' }).waitFor()
+    const buy = page.getByRole('link', { name: 'Buy the unlock, $6' })
+    await buy.waitFor()
+    check((await buy.getAttribute('href')) === `${PAYMENT_LINK}?client_reference_id=${group.id}`, 'Buy links to the payment link with the group')
     await scrollTo(page, 'h2:has-text("Make the awards")')
     await shoot(page, `awards-${size}`)
 

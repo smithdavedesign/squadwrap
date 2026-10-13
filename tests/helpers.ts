@@ -11,7 +11,7 @@ import { setDeps } from '../lib/api'
 import { createPgliteDb, migrate, type Db } from '../lib/db'
 import type { ChatMessage, ChatModel } from '../lib/model'
 import type { Payments } from '../lib/payments'
-import type { Answers } from '../lib/prompts'
+import { UNLOCK_PRICE, type Answers } from '../lib/prompts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (req: Request, ctx: any) => Promise<Response>
@@ -250,7 +250,7 @@ export function fakeSecret(prefix: string): string {
 
 let eventCounter = 0
 
-/** A Stripe event for a Checkout Session, as Stripe sends it (JSON text): a paid $12 session unless overridden. */
+/** A Stripe event for a Checkout Session, as Stripe sends it (JSON text): a paid unlock session of ours unless overridden. */
 export function checkoutEvent(type: string, session: Record<string, unknown>): string {
   eventCounter += 1
   return JSON.stringify({
@@ -267,8 +267,8 @@ export function checkoutEvent(type: string, session: Record<string, unknown>): s
         mode: 'payment',
         status: 'complete',
         payment_status: 'paid',
-        amount_total: 1200,
-        currency: 'usd',
+        amount_total: UNLOCK_PRICE.cents,
+        currency: UNLOCK_PRICE.currency,
         metadata: { app: 'squadwrap' },
         ...session,
       },

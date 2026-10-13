@@ -38,8 +38,11 @@ export const LIMITS = {
   unlockCutoffDays: 2,
 } as const
 
-/** The one thing for sale: every slide of one group without the watermark, paid once (Stripe Checkout). */
-export const UNLOCK_PRICE = { cents: 1200, currency: 'usd', label: '$12' } as const
+/**
+ * The one thing for sale: every slide of one group without the watermark, paid once (Stripe Payment Link or
+ * Checkout). $6, per REVENUE.md: below the ~€6 per-person chat wraps, since one payer covers the whole group.
+ */
+export const UNLOCK_PRICE = { cents: 600, currency: 'usd', label: '$6' } as const
 
 const DAY_MS = 86_400_000
 

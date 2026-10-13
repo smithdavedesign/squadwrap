@@ -1,12 +1,22 @@
+import type { Metadata } from 'next'
 import { connection } from 'next/server'
 import { LIMITS, UNLOCK_PRICE } from '../lib/prompts'
+import { JsonLd, publicPageMetadata } from '../lib/site'
 import { CreateGroupForm } from './create-group-form'
+
+export const metadata: Metadata = publicPageMetadata({
+  title: 'squadwrap: Wrapped for your friend group',
+  description:
+    'Friends answer five silly prompts and everyone gets an award for the year: a story slide per friend and a group yearbook. No app, no account, free to try.',
+  path: '/',
+})
 
 export default async function Home() {
   // Rendered per request so the default year is never frozen at build time.
   await connection()
   return (
     <>
+      <JsonLd />
       <h1>squadwrap</h1>
       <p className="lead">
         Spotify Wrapped for your friend group. Friends answer five silly prompts, and everyone gets an award for the year.
