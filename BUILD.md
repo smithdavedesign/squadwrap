@@ -1,5 +1,13 @@
 # squadwrap — build notes
 
+> **Go-live update (2026-10-13), see [LAUNCH-READY.md](LAUNCH-READY.md).** The price is now **$6 once per group**
+> (REVENUE.md), and refunds are on request with no time limit. The organizer buys through a **Buy** button that opens
+> the Stripe Payment Link in `STRIPE_PAYMENT_LINK` with `?client_reference_id=<group id>`, and the webhook unlocks
+> Payment Link sessions that paid at least the price. Stripe Checkout (below) remains the fallback when no link is set
+> and both Stripe secrets are; with neither, no payment button is shown. Also added: search and share metadata,
+> robots.txt, sitemap.xml, the share image, JSON-LD, and the RepoHQ visit signal. The M1–M4 plans and reviews below are
+> kept as written, so they still say $12.
+
 ## Plan
 
 M4 of 4 (MVP run): payment and safety.
@@ -188,8 +196,8 @@ Not automated:
 6. Every award becomes a **1080×1920 story slide** (M2) with the friend's photo or initial. The Download buttons point at the yearbook's slide URLs, so a shared slide link never carries the organizer key.
 7. **The yearbook (M3)**, at `/y/<token>`, has its own read-only key. It shows every award with the friend's photo, a Download slide button per award, a "Make your own group's wrap" link and a **"Report it or ask for a takedown"** link. It's kept out of search engines.
 8. **Reports (M3):** `/y/<token>/report` stores what's wrong and, optionally, how to reach the reporter, at most 20 per group in any hour (see "Handling reports and payments").
-9. **New in M4: the $12 unlock.** Once the awards exist, the organizer page offers **"Unlock for $12"**.
-   - The button opens **Stripe Checkout** (Stripe's hosted page; no card data touches the app).
+9. **New in M4: the unlock ($6 since go-live).** Once the awards exist, the organizer page offers **"Buy the unlock, $6"** (the Stripe Payment Link, `STRIPE_PAYMENT_LINK`, in a new tab; the webhook unlocks the group) or, with no link set, **"Unlock for $6"** (Stripe Checkout, below). With neither configured it offers no button.
+   - The Checkout button opens **Stripe Checkout** (Stripe's hosted page; no card data touches the app).
    - After paying, the organizer lands back on their page. It says "Payment received. Unlocking your slides…" and refreshes every 2 s until Stripe's webhook has arrived, then says **"Unlocked"**.
    - From then on, every slide of the group, remakes included, comes without the watermark: no overlay, no PNG flag, no header. The yearbook's "preview" note disappears too.
    - Repeat clicks reopen the same Checkout page, so nobody pays twice. No unlock is offered in a group's last 2 days; the page says why.
@@ -198,7 +206,7 @@ Not automated:
     - The organizer page and the yearbook show the date, e.g. "deleted on December 28, 2026".
     - The home page, the friend form and the privacy page say so too.
 11. **New in M4: privacy and terms pages, and a footer on every page.** The footer links **Privacy**, **Terms** and **Report a problem** (the terms' takedown section) and says squadwrap is for adults.
-    - The terms cover: 18+, what may be posted, what the $12 buys and for how long, refunds within 14 days, takedowns, deletion.
+    - The terms cover: 18+, what may be posted, what the $6 buys and for how long, refunds on request, takedowns, deletion, no warranty, contact through GitHub issues.
     - The privacy page covers what's stored and who else sees it: the AI provider (Gemini), Google Fonts for non-Latin slide text, Stripe, and the hosting. It ends with the 30-day deletion.
 
 **HTTP API** (JSON unless noted; errors are `{ "error": { "code", "message" } }`):
@@ -231,7 +239,7 @@ Not automated:
 
 ```bash
 npm install          # works with install scripts disabled (sharp ships prebuilt binaries; stripe and playwright-core are plain JS)
-npm test             # 287 tests pass (+1 opt-in preview, skipped), ~20 s, no network, no database server, no Stripe
+npm test             # 327 tests pass since go-live (+1 opt-in preview, skipped), ~25 s, no network, no database server, no Stripe
 npm run dev          # http://localhost:3000
 npm run smoke        # optional: next dev + a stub model, walks M1–M4 over real HTTP (40 checks)
 npm run screenshots  # optional: production build driven in Chromium → docs/screenshots/*.png (needs CHROMIUM_PATH)
@@ -242,7 +250,7 @@ npm run screenshots  # optional: production build driven in Chromium → docs/sc
   - Free and local: install [Ollama](https://ollama.com), run `ollama pull llama3.2`, then start with `LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=llama3.2 npm run dev`.
   - Gemini free tier: put `GOOGLE_API_KEY` in `.env.local` (gitignored). Use your own key; never commit it.
   - Any OpenAI-compatible endpoint, such as a LiteLLM free-model alias: set `LLM_BASE_URL`, `LLM_MODEL` and, if needed, `LLM_API_KEY`.
-- **Payments (M4), free in Stripe test mode.** Without `STRIPE_SECRET_KEY` the unlock button says payments aren't set up (503), and nothing else changes. To try the whole flow locally:
+- **Payments (M4), free in Stripe test mode.** Without `STRIPE_PAYMENT_LINK`, or both Stripe secrets, the organizer page offers no payment button (since go-live), and nothing else changes. To try the Checkout flow locally:
   1. Put your Stripe **test-mode** secret key in `.env.local` as `STRIPE_SECRET_KEY`.
   2. Run the free Stripe CLI: `stripe listen --forward-to localhost:3000/webhooks/stripe`. It prints a signing secret; put it in `.env.local` as `STRIPE_WEBHOOK_SECRET`.
   3. Pay with one of Stripe's documented test cards.
@@ -269,7 +277,9 @@ npm run screenshots  # optional: production build driven in Chromium → docs/sc
   The scenes:
   - the home page;
   - a friend filling in the form, adding a photo, ticking 18+ and sending;
-  - the organizer clicking "Make the awards", with the awards and the $12 unlock.
+  - the organizer clicking "Make the awards", with the awards and the $6 Buy button (a placeholder payment link).
+
+  Before the browser, it checks the launch tags over HTTP (titles, canonical URLs, Open Graph and Twitter tags, JSON-LD, robots.txt, sitemap.xml, the share image) and saves the share image to `.data/share-image.png`.
 
   The people are samples, the avatars are drawn, and the link fields are masked. It isn't part of `npm test`.
 - **See the slide design without a server:** `SLIDE_PREVIEW_DIR=.data/preview npx vitest run tests/zz-preview.test.ts`.
@@ -287,6 +297,8 @@ npm run screenshots  # optional: production build driven in Chromium → docs/sc
 | **M4:** `STRIPE_SECRET_KEY` | production, for payments | Creates Checkout Sessions. A **test-mode** key until going live is decided. Checkout answers 503 unless this **and** `STRIPE_WEBHOOK_SECRET` are set. |
 | **M4:** `STRIPE_WEBHOOK_SECRET` | production, for payments | The signing secret of the `/webhooks/stripe` endpoint. Without it the webhook answers 503 and Stripe keeps retrying. |
 | **M4:** `CRON_SECRET` | production | Vercel Cron sends it as `Authorization: Bearer …`. Without it the cleanup job refuses to run (503). |
+| **Go-live:** `STRIPE_PAYMENT_LINK` | production, for payments | The Stripe Payment Link ($6 once) behind the Buy button, read on the server per request. Unset (or not https): no Buy button. Unlocks need the webhook, so `STRIPE_WEBHOOK_SECRET` too. |
+| **Go-live:** `NEXT_PUBLIC_VERCEL_ENV` | set by Vercel | The RepoHQ signal is sent only when it is `production` (inlined at build time). |
 | **M4:** `PGLITE_DIR` | local only | Lets a local production build (`next start`) use PGlite in that directory; used by `npm run screenshots`. Never set it on Vercel. |
 | `VERCEL_PROJECT_PRODUCTION_URL` | set by Vercel | The slide credit uses the production domain |
 
@@ -316,7 +328,7 @@ Vercel Hobby, Neon Free, the Gemini free tier, Vercel Cron (daily) and Stripe te
      - a wrong token gives a 404.
    - **M4:**
      - the friend form won't send without the 18+ box;
-     - "Unlock for $12" → Stripe's test page → pay with a test card → back on the organizer page, which says "Unlocked" within seconds;
+     - "Buy the unlock, $6" (or "Unlock for $6" without a payment link) → Stripe's test page → pay with a test card → refresh the organizer page (the Checkout flow comes back by itself), which says "Unlocked" within seconds;
      - a downloaded slide has no PREVIEW;
      - Stripe dashboard → the event → "Resend": the response is `already_unlocked`;
      - `/privacy` and `/terms` load, and the footer is on every page.
@@ -395,7 +407,7 @@ Verified beyond the tests:
 - **`npm run smoke` against a real `next dev` server: 40/40 checks pass.** That includes the signed webhook through Next's real request handling (the raw body survives), the replay, a forged signature, cron auth and adults-only.
 - **`npm run screenshots`** (production build, Chromium, desktop + iPhone 13):
   - a friend fills the form, adds a photo, ticks 18+ and sends;
-  - the organizer clicks "Make the awards", and five awards appear with the $12 unlock;
+  - the organizer clicks "Make the awards", and five awards appear with the unlock ($6 Buy button since go-live);
   - all 6 PNGs were checked by eye.
 
 **Not verified here:**
@@ -427,7 +439,7 @@ Requested in `.provision` (run by the pipeline after the build; no values are in
   - a host that allows commercial use;
   - Stripe live activation: business details, support email, receipts;
   - live keys and a live webhook secret.
-  - Price and refund policy are code/terms decisions made here: $12 and 14 days. Change `UNLOCK_PRICE` in `lib/prompts.ts` and the terms if needed.
+  - Price and refund policy follow REVENUE.md since go-live: $6 once per group, refund on request. Change `UNLOCK_PRICE` in `lib/prompts.ts` and the terms if needed (a Payment Link must charge at least `UNLOCK_PRICE` to unlock).
 - **M4 follow-ups, not planned:**
   - re-locking a group automatically on a refund or dispute (`charge.refunded` / `charge.dispute.created`); today it's one SQL statement;
   - a general report form for pages without a yearbook (today: the footer leads to the terms' takedown section);

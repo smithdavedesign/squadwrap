@@ -344,6 +344,49 @@ describe('POST /webhooks/stripe', () => {
     expect(JSON.stringify(warn.mock.calls)).toContain('unknown_group')
   })
 
+  describe('sessions from the Payment Link (the Buy button: STRIPE_PAYMENT_LINK?client_reference_id=<group id>)', () => {
+    // What Stripe sends for a Payment Link: no metadata of ours, the link's id, the amount it charged.
+    const fromLink = (session: Record<string, unknown> = {}) => ({ metadata: {}, payment_link: 'plink_test_squadwrap', ...session })
+
+    it('unlocks the group named by client_reference_id when the link charged the unlock price, once', async () => {
+      const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+      const paid = await signedWebhook('checkout.session.completed', fromLink({ client_reference_id: group.id }))
+      expect(paid).toEqual({ status: 200, body: { received: true, outcome: 'unlocked' } })
+      expect(await unlockedAt(db, group.id)).toBeInstanceOf(Date)
+      const replay = await signedWebhook('checkout.session.completed', fromLink({ client_reference_id: group.id }))
+      expect(replay.body.outcome).toBe('already_unlocked')
+    })
+
+    it('unlocks when the link charged more than the price (a later price test)', async () => {
+      const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+      const res = await signedWebhook('checkout.session.completed', fromLink({ client_reference_id: group.id, amount_total: UNLOCK_PRICE.cents + 300 }))
+      expect(res.body.outcome).toBe('unlocked')
+    })
+
+    it('waits for a delayed payment from the link, like a Checkout payment', async () => {
+      const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+      const pending = await signedWebhook('checkout.session.completed', fromLink({ client_reference_id: group.id, payment_status: 'unpaid' }))
+      expect(pending.body.outcome).toBe('awaiting_payment')
+      expect(await unlockedAt(db, group.id)).toBeNull()
+    })
+
+    it('ignores a cheaper link, another currency, a missing amount or a subscription link opened with the group id', async () => {
+      const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+      const foreign = [
+        fromLink({ amount_total: UNLOCK_PRICE.cents - 1 }),
+        fromLink({ amount_total: 0, payment_status: 'no_payment_required' }),
+        fromLink({ currency: 'eur' }),
+        fromLink({ amount_total: null }),
+        fromLink({ mode: 'subscription' }),
+      ]
+      for (const session of foreign) {
+        const res = await signedWebhook('checkout.session.completed', { client_reference_id: group.id, ...session })
+        expect(res, JSON.stringify(session)).toEqual({ status: 200, body: { received: true, outcome: 'ignored' } })
+      }
+      expect(await unlockedAt(db, group.id)).toBeNull()
+    })
+  })
+
   it('unlocks exactly once when two deliveries arrive at the same time', async () => {
     const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
     const payload = checkoutEvent('checkout.session.completed', { client_reference_id: group.id })
@@ -365,17 +408,34 @@ describe('POST /webhooks/stripe', () => {
 })
 
 describe('organizer page: unlocking', () => {
-  const unlockButton = /<button[^>]*>Unlock for \$12<\/button>/
+  const unlockButton = new RegExp(`<button[^>]*>Unlock for \\${UNLOCK_PRICE.label}</button>`)
+  const buyLink = /<a[^>]*class="button-buy"/
 
-  it('offers the unlock once the awards exist, with the price', async () => {
+  // The Buy link (STRIPE_PAYMENT_LINK) has its own tests in launch.test.ts; here it is unset.
+  beforeEach(() => {
+    vi.stubEnv('STRIPE_PAYMENT_LINK', '')
+  })
+
+  it('offers the Checkout unlock once the awards exist, with the price, when Stripe Checkout is configured', async () => {
     const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+    useDeps(db, stubModel('{}'), stubPayments())
     const { html } = await getPage(`/groups/${group.id}`)
     expect(html).toMatch(unlockButton)
     expect(html).toContain(UNLOCK_PRICE.label)
+    expect(html).not.toMatch(buyLink)
   })
 
+  it('offers no button when no way to pay is configured, rather than one that can only fail', async () => {
+    const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+    const { html } = await getPage(`/groups/${group.id}`)
+    expect(html).not.toMatch(unlockButton)
+    expect(html).not.toMatch(buyLink)
+    expect(html).toContain('PREVIEW')
+  })
+
+  // Below, Checkout is configured, so a missing button means the page chose not to offer one.
   it('offers no unlock before there are awards to unlock', async () => {
-    useDeps(db, stubModel('{}'))
+    useDeps(db, stubModel('{}'), stubPayments())
     const group = await createGroup()
     await submit(group.id, 'Ana')
     const { html } = await getPage(`/groups/${group.id}`)
@@ -384,6 +444,7 @@ describe('organizer page: unlocking', () => {
 
   it('says the group is unlocked once paid, with no button', async () => {
     const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+    useDeps(db, stubModel('{}'), stubPayments())
     await setUnlocked(db, group.id)
     const { html } = await getPage(`/groups/${group.id}`)
     expect(html).toContain('Unlocked')
@@ -393,6 +454,7 @@ describe('organizer page: unlocking', () => {
 
   it(`offers no unlock in the group's last ${LIMITS.unlockCutoffDays} days, and says why`, async () => {
     const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+    useDeps(db, stubModel('{}'), stubPayments())
     await makeOlder(db, group.id, LIMITS.retentionDays - 1)
     const { html } = await getPage(`/groups/${group.id}`)
     expect(html).not.toMatch(unlockButton)
@@ -401,6 +463,7 @@ describe('organizer page: unlocking', () => {
 
   it('says the payment is being confirmed when back from Checkout before the webhook landed', async () => {
     const group = await groupWithAwards(db, ['Ana', 'Ben', 'Cat'])
+    useDeps(db, stubModel('{}'), stubPayments())
     const { html } = await getPage(`/groups/${group.id}?paid=1`)
     expect(html).toContain('Payment received')
     expect(html).not.toMatch(unlockButton)

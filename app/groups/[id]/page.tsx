@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { connection } from 'next/server'
-import { getDb } from '../../../lib/api'
+import { getDb, getPayments } from '../../../lib/api'
+import { paymentLinkFor } from '../../../lib/payments'
 import { LIMITS, UNLOCK_PRICE, formatDay, tooLateToUnlock } from '../../../lib/prompts'
 import { getDashboard, yearbookFilePath, yearbookPath } from '../../../lib/squad'
-import { CopyLink, GenerateButton, Nudge, PaymentPending, UnlockButton } from './dashboard-actions'
+import { BuyButton, CopyLink, GenerateButton, Nudge, PaymentPending, UnlockButton } from './dashboard-actions'
 
 export const metadata: Metadata = {
   title: 'Your group · squadwrap',
@@ -23,6 +24,10 @@ export default async function GroupPage({ params, searchParams }: Props) {
 
   const answered = group.submissions.length
   const invitePath = `/join/${group.inviteToken}`
+  // How the unlock is sold: the Payment Link (STRIPE_PAYMENT_LINK) when set, else Stripe Checkout when both its
+  // secrets are set (lib/payments.ts). Neither: no button at all, rather than one that can only fail.
+  const buyLink = paymentLinkFor(group.id)
+  const checkoutReady = !buyLink && getPayments() !== null
   return (
     <>
       <h1>
@@ -97,14 +102,16 @@ export default async function GroupPage({ params, searchParams }: Props) {
                   Free slides carry a “PREVIEW” watermark. This group is too close to its deletion on{' '}
                   {formatDay(group.deletesOn)} to unlock it; save the slides you want before then.
                 </p>
-              ) : (
+              ) : buyLink || checkoutReady ? (
                 <>
                   <p>
                     Free slides carry a “PREVIEW” watermark. Take it off every slide in this group, remakes included:{' '}
                     <strong>{UNLOCK_PRICE.label}</strong>, once. Payment by Stripe; see the <a href="/terms">terms</a>.
                   </p>
-                  <UnlockButton groupId={group.id} />
+                  {buyLink ? <BuyButton href={buyLink} /> : <UnlockButton groupId={group.id} />}
                 </>
+              ) : (
+                <p>Free slides carry a “PREVIEW” watermark.</p>
               )}
             </div>
             <ul className="awards">

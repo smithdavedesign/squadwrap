@@ -43,7 +43,8 @@ export function createStripePayments(secretKey: string, config: Stripe.StripeCon
         ],
         // The webhook finds the group by this. It is the organizer's key, which Stripe (a payment processor) then holds.
         client_reference_id: groupId,
-        // The webhook only acts on sessions with this tag. A Payment Link URL can set client_reference_id, but not this.
+        // The webhook trusts sessions with this tag. A Payment Link URL can set client_reference_id, but not this, so
+        // untagged (Payment Link) sessions must also have paid the full price (soldTheUnlock).
         metadata: { app: APP_TAG },
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -62,6 +63,25 @@ export function createStripePayments(secretKey: string, config: Stripe.StripeCon
 export function paymentsFromEnv(env: Record<string, string | undefined>): Payments | null {
   const key = env.STRIPE_SECRET_KEY?.trim()
   return key && env.STRIPE_WEBHOOK_SECRET?.trim() ? createStripePayments(key) : null
+}
+
+/**
+ * The Buy link for one group: the Stripe Payment Link in STRIPE_PAYMENT_LINK, with the group attached as
+ * `client_reference_id` (a group id is base64url, which Stripe accepts there), so the webhook knows what to unlock.
+ * Null, and no Buy button, when the variable is unset or isn't an https URL.
+ */
+export function paymentLinkFor(groupId: string, env: Record<string, string | undefined> = process.env): string | null {
+  const raw = env.STRIPE_PAYMENT_LINK?.trim()
+  if (!raw) return null
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:') return null
+  url.searchParams.set('client_reference_id', groupId)
+  return url.href
 }
 
 /** An error's kind and code, never its message: Stripe messages can echo the request, URLs with the organizer key included. */
@@ -112,7 +132,8 @@ const PAID_EVENTS = new Set(['checkout.session.completed', 'checkout.session.asy
 /**
  * POST /webhooks/stripe: verifies the signature over the raw body, then unlocks the group the session was for.
  * Every verified event gets a 200, even one we don't act on, so Stripe stops retrying it. A bad signature gets a 400
- * and changes nothing. The signed event is trusted as is: only our server, holding the secret key, creates sessions.
+ * and changes nothing. The signed event is trusted as is: our server creates the tagged sessions, and a Payment Link
+ * session counts only when it paid the full price (soldTheUnlock).
  */
 export async function handleStripeWebhook(
   db: Queryable,
@@ -137,12 +158,26 @@ export async function handleStripeWebhook(
   return { received: true, outcome }
 }
 
+/**
+ * A one-time payment that sold the unlock: a session createStripePayments made (tagged), or one from a Payment Link
+ * (the Buy button's STRIPE_PAYMENT_LINK, opened with ?client_reference_id=<group id>). A Payment Link can't carry
+ * our tag, so it counts only when it charged at least the unlock price in its currency: on a shared Stripe account,
+ * a cheaper link opened with a group's id unlocks nothing. Anything else (another app's checkout) is not ours.
+ */
+function soldTheUnlock(session: Stripe.Checkout.Session): boolean {
+  if (session.mode !== 'payment') return false
+  if (session.metadata?.app === APP_TAG) return true
+  return (
+    Boolean(session.payment_link) &&
+    session.currency === UNLOCK_PRICE.currency &&
+    (session.amount_total ?? 0) >= UNLOCK_PRICE.cents
+  )
+}
+
 async function unlockFor(db: Queryable, event: Stripe.Event): Promise<WebhookOutcome> {
   if (!PAID_EVENTS.has(event.type)) return 'ignored'
   const session = event.data.object as Stripe.Checkout.Session
-  // Only sessions this app created: tagged by createStripePayments, one-time payments. Anything else on a shared
-  // account (another app's checkout, a Payment Link opened with ?client_reference_id=…) is not ours to fulfil.
-  if (session.metadata?.app !== APP_TAG || session.mode !== 'payment') return 'ignored'
+  if (!soldTheUnlock(session)) return 'ignored'
   if (session.payment_status === 'unpaid') return 'awaiting_payment'
   const groupId = session.client_reference_id
   if (!groupId) return 'ignored'
