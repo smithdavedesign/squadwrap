@@ -1,5 +1,18 @@
 # squadwrap — Spotify Wrapped for your friend group, built from what friends submit
 
+## Payment, tested live
+
+`npm run payment:live` runs the whole purchase on https://squadwrap.vercel.app with Stripe in test mode (2026-10-13): three friends answer, the organizer makes the awards and clicks Buy, pays $6 on Stripe's checkout with the test card 4242 4242 4242 4242, and the webhook unlocks the group. It passes at desktop and phone size.
+
+![The awards with the $6 Buy button on the live site](docs/screenshots/payment-desktop-1-awards-buy.png)
+The organizer's awards on the live site, with the Buy button (the Stripe Payment Link with the group attached).
+
+![Stripe test checkout on a phone, card filled in](docs/screenshots/payment-mobile-2-stripe-checkout.png)
+Stripe's hosted checkout on a phone, in test mode, with the test card.
+
+![The group unlocked after paying](docs/screenshots/payment-desktop-3-unlocked.png)
+Back on the organizer page: "Unlocked", set by the webhook once Stripe confirmed the payment.
+
 ## Screenshots
 
 Captured by `npm run screenshots` from the production build (`next start`) in Chromium, with sample friends, drawn avatars, a stub AI model and a placeholder payment link. The same run checks the titles, canonical URLs, share tags, JSON-LD, robots.txt and sitemap.xml over HTTP.
