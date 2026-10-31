@@ -233,7 +233,7 @@ describe('the RepoHQ signal', () => {
     expect(browser.sent).toHaveLength(1)
     const [{ url, init }] = browser.sent
     expect(url).toBe(SIGNAL_URL)
-    expect(url).toBe('https://repohq.vercel.app/api/ideas/signal')
+    expect(url).toBe('https://idea-factory.1426davejobs.workers.dev/api/ideas/signal')
     expect(init).toMatchObject({ method: 'POST', keepalive: true, credentials: 'omit', referrerPolicy: 'no-referrer' })
     expect(init.headers).toEqual({ 'content-type': 'application/json' })
     expect(JSON.parse(String(init.body))).toEqual({ slug: 'squadwrap', kind: 'visit', referrer: null })

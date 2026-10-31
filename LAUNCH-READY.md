@@ -16,7 +16,7 @@ The product does what it did before: an organizer makes a group, friends answer 
 3. **Payment: the Buy button.** Once the awards exist, the organizer page shows **"Buy the unlock, $6"**. It opens the URL in `STRIPE_PAYMENT_LINK` in a new tab, with `?client_reference_id=<group id>` added so the payment names the group it unlocks.
    - The button is hidden when the variable is unset or isn't an https URL. The link is read on the server, so nothing is hard-coded and no `NEXT_PUBLIC_` copy is needed.
    - The Stripe webhook now also unlocks **Payment Link** sessions, but only one-time payments of at least $6 in USD. On a shared Stripe account, a cheaper link opened with a group's id still unlocks nothing.
-4. **RepoHQ visit signal** (`lib/signal.ts`). It sends a fire-and-forget `POST` with JSON `{"slug":"squadwrap","kind":…,"referrer":…}` to `https://repohq.vercel.app/api/ideas/signal`, using `keepalive`, `credentials: 'omit'` and no Referer header. There are three events:
+4. **RepoHQ visit signal** (`lib/signal.ts`). It sends a fire-and-forget `POST` with JSON `{"slug":"squadwrap","kind":…,"referrer":…}` to `https://idea-factory.1426davejobs.workers.dev/api/ideas/signal`, using `keepalive`, `credentials: 'omit'` and no Referer header. There are three events:
    - `visit`: once per browser session (sessionStorage), from every page.
    - `activate`: once per browser (localStorage), on the product's core action, **a successful "Make the awards"** (the AI turning the friends' answers into awards).
    - `checkout`: every click on Buy.
@@ -68,7 +68,7 @@ npm run smoke          # optional: next dev, the whole flow over HTTP (Buy link 
 After deploying:
 - Open `https://<host>/robots.txt`, `/sitemap.xml` and `/opengraph-image`, and view the source of `/`, `/privacy` and `/terms`.
 - Paste `https://<host>/` into a link-preview checker (or a chat) to see the card, and into Google's Rich Results Test for the JSON-LD.
-- Make a test group with 3 answers, then "Make the awards". The browser's network tab should show one `activate` POST to repohq.vercel.app (plus a `visit` at the start of the session). Click Buy and a `checkout` follows. None of these appear on a preview deployment.
+- Make a test group with 3 answers, then "Make the awards". The browser's network tab should show one `activate` POST to idea-factory.1426davejobs.workers.dev (plus a `visit` at the start of the session). Click Buy and a `checkout` follows. None of these appear on a preview deployment.
 
 ## What's left for David
 

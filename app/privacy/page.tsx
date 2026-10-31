@@ -72,7 +72,7 @@ export default function PrivacyPage() {
       <h2 id="visit-count">The visit count</h2>
       <p>
         So its maker can see whether anyone uses squadwrap, your browser sends a tiny anonymous message to RepoHQ
-        (repohq.vercel.app, the maker’s project dashboard) on three occasions:
+        (idea-factory.1426davejobs.workers.dev, the maker’s project dashboard) on three occasions:
       </p>
       <ul>
         <li>
