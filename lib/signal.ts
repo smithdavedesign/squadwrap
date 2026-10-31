@@ -2,7 +2,7 @@
 // anyone uses the app. Browser-only. Each message is {slug, kind, referrer} and nothing else: no cookies, no ids, and
 // never the page address (squadwrap's links are the keys to a group). The privacy page describes exactly this.
 
-export const SIGNAL_URL = 'https://repohq.vercel.app/api/ideas/signal'
+export const SIGNAL_URL = 'https://idea-factory.1426davejobs.workers.dev/api/ideas/signal'
 export const SIGNAL_SLUG = 'squadwrap'
 
 /**
