@@ -338,7 +338,12 @@ What changed for the Worker:
   queries go over Neon's HTTPS endpoint and each transaction opens and closes its own WebSocket connection (Neon's serverless
   driver, node-postgres underneath). Vercel and local runs keep the `pg` pool. The Worker never falls back to PGlite.
 - **Stripe webhook:** verified with `constructEventAsync` over Web Crypto, which works in Node.js and Workers alike.
-- **Gemini:** a plain `fetch` to its OpenAI-compatible endpoint, unchanged.
+- **Gemini:** a plain `fetch` to its OpenAI-compatible endpoint. With the default `gemini-flash-latest`, "Make the awards"
+  hit the 45 s timeout three times from the Worker, even with `reasoning_effort: "low"` (now sent to Gemini). So
+  `wrangler.jsonc` sets the plain var `LLM_MODEL=gemini-flash-lite-latest`, which answered in ~7 s. A 502 `model_unavailable`
+  names its reason ("timed out", "HTTP 429").
+- **Live screenshots:** `CHROMIUM_PATH=… node scripts/screenshots-live.mjs` runs the main flow against the Worker into
+  `docs/screenshots/live/` (README "Live"). It makes a real group and calls the real model.
 
 ## Deploy on a free tier (Vercel, until 2026-10-31)
 
