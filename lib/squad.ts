@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { Db, Queryable } from './db'
-import { ModelOutputError, buildMessages, parseAwards, type Award, type ChatModel } from './model'
+import { ModelOutputError, ModelUnavailableError, buildMessages, parseAwards, type Award, type ChatModel } from './model'
 import { nudgeText, pendingCount } from './nudge'
 import { PhotoError, decodePhotoField, normalizePhoto } from './photo'
 import { LIMITS, PROMPTS, cleanLine, deletesOn, nameKey, type Answers } from './prompts'
@@ -260,7 +260,9 @@ export async function generateAwards(db: Db, model: ChatModel | null, groupId: s
   } catch (err) {
     logModelFailure(err)
     if (err instanceof ModelOutputError) throw badOutput()
-    throw new AppError(502, 'model_unavailable', 'The AI is not answering right now. Try again in a minute.')
+    // The reason ("timed out", "HTTP 429") is ours, never the model's text, so it's safe to show and tells the operator why.
+    const reason = err instanceof ModelUnavailableError && err.reason ? ` (${err.reason})` : ''
+    throw new AppError(502, 'model_unavailable', `The AI is not answering right now${reason}. Try again in a minute.`)
   }
   let awards: Award[]
   try {
