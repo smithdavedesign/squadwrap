@@ -1,8 +1,21 @@
 # squadwrap — Spotify Wrapped for your friend group, built from what friends submit
 
+## Live
+
+**https://squadwrap.1426davejobs.workers.dev**
+
+squadwrap runs on a Cloudflare Worker (Workers Paid) since 2026-11-08; Vercel's deployment answers 402. These screenshots were taken against the live Worker with Chrome for Testing by `node scripts/screenshots-live.mjs`. That made a real group, "Flat 4B": three friends answered through the API and Eli in the browser. Gemini wrote the awards, and the Worker drew the slide. The group is deleted after 30 days, like every group.
+
+| | Desktop (1440×900) | Phone (iPhone 13) |
+|---|---|---|
+| The start page | <img src="docs/screenshots/live/home-desktop.png" alt="The start page on the Worker, desktop" width="520"> | <img src="docs/screenshots/live/home-phone.png" alt="The start page on the Worker, phone" width="200"> |
+| A friend answering through the invite link, photo added, 18+ box ticked | <img src="docs/screenshots/live/join-desktop.png" alt="The friend form, desktop" width="520"> | <img src="docs/screenshots/live/join-phone.png" alt="The friend form, phone" width="200"> |
+| The organizer's awards from Gemini, with the $6 Buy button (Stripe test-mode Payment Link) | <img src="docs/screenshots/live/awards-desktop.png" alt="The awards and Buy button, desktop" width="520"> | <img src="docs/screenshots/live/awards-phone.png" alt="The awards and Buy button, phone" width="200"> |
+| One award as the 1080×1920 story slide the Worker draws (watermarked until the group is unlocked) | <img src="docs/screenshots/live/slide-desktop.png" alt="Ana's award slide, desktop" width="520"> | <img src="docs/screenshots/live/slide-phone.png" alt="Ana's award slide, phone" width="200"> |
+
 ## Payment, tested live
 
-`npm run payment:live` runs the whole purchase on https://squadwrap.vercel.app with Stripe in test mode (2026-10-13): three friends answer, the organizer makes the awards and clicks Buy, pays $6 on Stripe's checkout with the test card 4242 4242 4242 4242, and the webhook unlocks the group. It passes at desktop and phone size.
+`npm run payment:live` ran the whole purchase on https://squadwrap.vercel.app with Stripe in test mode (2026-10-13, before the move to the Worker): three friends answer, the organizer makes the awards and clicks Buy, pays $6 on Stripe's checkout with the test card 4242 4242 4242 4242, and the webhook unlocks the group. It passes at desktop and phone size.
 
 ![The awards with the $6 Buy button on the live site](docs/screenshots/payment-desktop-1-awards-buy.png)
 The organizer's awards on the live site, with the Buy button (the Stripe Payment Link with the group attached).
