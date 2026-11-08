@@ -1,6 +1,8 @@
 import { crc32 } from 'node:zlib'
 import { ImageResponse } from 'next/og'
 import type { ReactElement } from 'react'
+import { deployEnv } from './signal'
+import { productionHost } from './site'
 
 /** Story format (Instagram, TikTok, WhatsApp status). */
 export const SLIDE_WIDTH = 1080
@@ -43,11 +45,16 @@ const SAFE_BOTTOM = 200
 const PICTOGRAPHS = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u{200D}\u{20E3}\u{FE0E}\u{FE0F}\u{E0020}-\u{E007F}]/gu
 
 /**
- * The host the "make yours" line points to. On Vercel that's the project's production domain (a system env
- * var, set on preview deploys too), so a slide made on a preview URL still sends people to the real site.
+ * The host the "make yours" line points to: the production host (lib/site.tsx: Vercel's production domain, set on
+ * preview deploys too, or the Cloudflare Worker's address), so a slide made on a preview URL still sends people to the
+ * real site. Otherwise (local runs) the request's host.
  */
-export function creditHost(requestUrl: string, env: Record<string, string | undefined> = process.env): string {
-  return env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || new URL(requestUrl).host
+export function creditHost(
+  requestUrl: string,
+  env: Record<string, string | undefined> = process.env,
+  deploy: string | undefined = deployEnv(),
+): string {
+  return productionHost(env, deploy) || new URL(requestUrl).host
 }
 
 /** Text as it is drawn on a slide: no emoji, single spaces. */

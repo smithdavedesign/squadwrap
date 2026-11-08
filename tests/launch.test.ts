@@ -224,6 +224,7 @@ describe('the RepoHQ signal', () => {
   // The fallback when a test passes no vercelEnv, whatever the shell holds.
   beforeEach(() => {
     vi.stubEnv('NEXT_PUBLIC_VERCEL_ENV', '')
+    vi.stubEnv('NEXT_PUBLIC_DEPLOY_ENV', '')
   })
 
   it('sends a visit once per browser session: POST JSON {slug, kind, referrer}, keepalive, no cookies, no Referer', () => {

@@ -9,7 +9,7 @@ The product does what it did before: an organizer makes a group, friends answer 
    - `app/opengraph-image.tsx`, which draws the share image with code at build time (no copied image);
    - `app/robots.ts` (allow everything, point at the sitemap) and `app/sitemap.ts` (the three public pages).
 
-   The site address comes from Vercel's `VERCEL_PROJECT_PRODUCTION_URL`, so the canonical URLs and the sitemap follow a custom domain once it's made the production domain. Private-link pages (`/groups`, `/join`, `/y`) keep their noindex header and get no canonical URL.
+   The site address is the Cloudflare Worker's (`WORKER_HOST` in `lib/site.tsx`, in the `npm run cf:build` build), or on Vercel its `VERCEL_PROJECT_PRODUCTION_URL`, so the canonical URLs and the sitemap follow a custom domain once it's made the production domain. Private-link pages (`/groups`, `/join`, `/y`) keep their noindex header and get no canonical URL.
 2. **Privacy and terms**, both already linked from the footer on every page:
    - **Privacy** now covers the visit count (below), with its three events and exactly what they carry. It also says squadwrap sets no cookies, and gives the contact: [GitHub issues](https://github.com/smithdavedesign/squadwrap/issues), with a warning never to post a group's links there.
    - **Terms** now give the price from REVENUE.md ("$6 once per group"), its refund line ("Refund on request, no questions asked"), a "No warranty" section, and the same GitHub contact.
@@ -72,14 +72,14 @@ After deploying:
 
 ## What's left for David
 
-1. **Paste the Stripe payment link into Vercel** as `STRIPE_PAYMENT_LINK` (Production), then redeploy. The broker request in `.provision` asks for it: **$6 USD, one-time**. The webhook only unlocks a link that charges at least $6 in USD.
-2. **Turn on automatic unlocks:** add a Stripe webhook endpoint `https://<host>/webhooks/stripe` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`, and put its signing secret in Vercel as `STRIPE_WEBHOOK_SECRET`. This was already requested in M4. Until it's set, unlock paid groups by hand: the payment's `client_reference_id` in Stripe is the group id, and the SQL is in BUILD.md under "Handling reports and payments".
+1. **Stripe payment link and webhook (test mode): done for the Worker** on 2026-11-08 (`provision stripe squadwrap 6 --host cloudflare --webhook /webhooks/stripe`, BUILD.md "Deploy on Cloudflare Workers"): **$6 USD, one-time**, redirecting to the Worker, and the webhook endpoint at `https://squadwrap.1426davejobs.workers.dev/webhooks/stripe`. Going live means running it again with `--live`. The webhook only unlocks a link that charges at least $6 in USD; to unlock a paid group by hand, the payment's `client_reference_id` in Stripe is the group id, and the SQL is in BUILD.md under "Handling reports and payments".
+2. (Merged into 1.)
 3. **Stripe settings:** a support email, and email receipts switched on. The terms send refund requests to the receipt's support address.
-4. **Hosting that allows payments.** Vercel Hobby forbids commercial use (BUILD.md, REVENUE.md), so decide on this before taking real money.
+4. **Hosting that allows payments: done.** squadwrap runs on Cloudflare Workers (Paid) since 2026-11-08, which allows commercial use.
 5. **In your own browser** on the production site, run `localStorage.setItem('repohq:notrack', '1')` in the console so your own use isn't counted.
 6. **GitHub issues:** privacy and terms send people to https://github.com/smithdavedesign/squadwrap/issues, so the repo needs to be public with issues on.
-7. **A custom domain**, if you want one: add it in Vercel and make it the production domain, then redeploy. The canonical URLs, sitemap, robots.txt and JSON-LD follow it.
-8. Still open from M4, if not done yet: `CRON_SECRET` in Vercel, which runs the 30-day deletion.
+7. **A custom domain**, if you want one: add it to the Worker in Cloudflare, set `WORKER_HOST` in `lib/site.tsx` to it, then `npm run cf:build` and deploy. The canonical URLs, sitemap, robots.txt, JSON-LD and the slide credit follow it.
+8. **`CRON_SECRET`**, which runs the 30-day deletion: store it (`~/ai-stack/bin/secrets add squadwrap CRON_SECRET`), then `provision cloudflare secret squadwrap CRON_SECRET`. The Worker's Cron Trigger (04:17 UTC daily) already calls the job; without the secret it answers 503 and deletes nothing.
 
 ## Self-review (gstack pre-landing checklist)
 

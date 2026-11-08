@@ -296,13 +296,51 @@ npm run screenshots  # optional: production build driven in Chromium → docs/sc
 | `LLM_BASE_URL`, `LLM_API_KEY` | optional | Any OpenAI-compatible endpoint. Takes precedence over `GOOGLE_API_KEY`. |
 | **M4:** `STRIPE_SECRET_KEY` | production, for payments | Creates Checkout Sessions. A **test-mode** key until going live is decided. Checkout answers 503 unless this **and** `STRIPE_WEBHOOK_SECRET` are set. |
 | **M4:** `STRIPE_WEBHOOK_SECRET` | production, for payments | The signing secret of the `/webhooks/stripe` endpoint. Without it the webhook answers 503 and Stripe keeps retrying. |
-| **M4:** `CRON_SECRET` | production | Vercel Cron sends it as `Authorization: Bearer …`. Without it the cleanup job refuses to run (503). |
+| **M4:** `CRON_SECRET` | production | The Worker's Cron Trigger (Vercel Cron on Vercel) sends it as `Authorization: Bearer …`. Without it the cleanup job refuses to run (503). |
 | **Go-live:** `STRIPE_PAYMENT_LINK` | production, for payments | The Stripe Payment Link ($6 once) behind the Buy button, read on the server per request. Unset (or not https): no Buy button. Unlocks need the webhook, so `STRIPE_WEBHOOK_SECRET` too. |
-| **Go-live:** `NEXT_PUBLIC_VERCEL_ENV` | set by Vercel | The RepoHQ signal is sent only when it is `production` (inlined at build time). |
-| **M4:** `PGLITE_DIR` | local only | Lets a local production build (`next start`) use PGlite in that directory; used by `npm run screenshots`. Never set it on Vercel. |
-| `VERCEL_PROJECT_PRODUCTION_URL` | set by Vercel | The slide credit uses the production domain |
+| `NEXT_PUBLIC_DEPLOY_ENV` | set by `npm run cf:build` | `production` in the Cloudflare Worker's build: the RepoHQ signal is sent, and canonical URLs and the slide credit use the Worker's address. Inlined at build time. |
+| **Go-live:** `NEXT_PUBLIC_VERCEL_ENV` | set by Vercel | On Vercel, the RepoHQ signal is sent only when it is `production` (inlined at build time). |
+| **M4:** `PGLITE_DIR` | local only | Lets a local production build (`next start`) use PGlite in that directory; used by `npm run screenshots`. Never set it on Vercel; the Worker ignores it. |
+| `VERCEL_PROJECT_PRODUCTION_URL` | set by Vercel | On Vercel, the slide credit and canonical URLs use the production domain (the Worker's build uses its own address, `WORKER_HOST` in `lib/site.tsx`) |
 
-## Deploy on a free tier
+## Deploy on Cloudflare Workers (since 2026-11-08)
+
+Vercel blocked the account on 2026-10-31 (every deployment answers 402), so squadwrap runs on a Cloudflare Worker at
+**https://squadwrap.1426davejobs.workers.dev**, through the OpenNext adapter (`open-next.config.ts`, `wrangler.jsonc`). It
+needs **Workers Paid**: a story slide takes 0.5–1 s of CPU to draw and a photo a few hundred ms, far over the free plan's
+10 ms; Paid allows 30 s a request by default. The Vercel build still works from the same code (`npm run build`, `vercel.json`).
+
+1. Build: `npm ci && npm run cf:build`. It runs `next build` with `NEXT_PUBLIC_DEPLOY_ENV=production` (the beacon counts the
+   Worker's visitors; canonical URLs and the slide credit use the Worker's address) and `SQUADWRAP_WORKER_BUILD=1` (Photon's
+   Worker entry and its `.wasm` are added to the trace, `next.config.ts`), turns it into `.open-next/worker.js` plus static
+   assets, then copies the prerendered pages and share image into the static assets (`populateCache local`), because the
+   broker's deploy is a plain `wrangler deploy`. The Worker is ~3 MiB compressed.
+2. Deploy through the credential broker, which holds the Cloudflare token: `provision cloudflare deploy squadwrap "$PWD"`.
+   `wrangler.jsonc`'s `main` is `cloudflare/worker.mjs`: OpenNext's worker plus a `scheduled()` handler.
+3. Secrets are Worker secrets, pushed from the keychain: `provision cloudflare secret squadwrap <KEY>` for `DATABASE_URL` and
+   `GOOGLE_API_KEY`. Stripe (test mode) is set up for the Worker with
+   `provision stripe squadwrap 6 --host cloudflare --webhook /webhooks/stripe`: the Payment Link redirects to the Worker, the
+   webhook endpoint points at `/webhooks/stripe` on it, and `STRIPE_PAYMENT_LINK` and `STRIPE_WEBHOOK_SECRET` become Worker
+   secrets (read per request, so no rebuild).
+4. **The cleanup job** is a Cron Trigger (`triggers.crons` in `wrangler.jsonc`, the same `17 4 * * *` as `vercel.json`).
+   `cloudflare/scheduled.mjs` calls `/cron/cleanup` inside the Worker with `Authorization: Bearer $CRON_SECRET`. Until David
+   stores `CRON_SECRET` and pushes it (`provision cloudflare secret squadwrap CRON_SECRET`), the route answers 503 and nothing is
+   deleted; the failed run shows in the Worker's Cron Events.
+
+What changed for the Worker:
+- **Photos:** sharp is a native module and can't load in a Worker. `lib/photo.ts` uses Photon (`@cf-wasm/photon`, Rust compiled
+  to WebAssembly) on every host: header-only size check, decode, resize, EXIF orientation applied in JavaScript (all eight
+  orientations match sharp's, tested), transparency on white, JPEG re-encode with no metadata. The pixel cap went from 12 to
+  8 MP: decoding needs 4 bytes a pixel of WebAssembly memory, which never shrinks, in a 128 MB Worker. sharp stays a dev
+  dependency, for the tests' fixtures.
+- **Slides:** `next/og` runs as is; OpenNext swaps in its edge build (resvg and yoga as WebAssembly).
+- **Database:** a Worker can't reuse a socket another request opened, so on the Worker (`lib/db.ts`, `createNeonDb`) single
+  queries go over Neon's HTTPS endpoint and each transaction opens and closes its own WebSocket connection (Neon's serverless
+  driver, node-postgres underneath). Vercel and local runs keep the `pg` pool. The Worker never falls back to PGlite.
+- **Stripe webhook:** verified with `constructEventAsync` over Web Crypto, which works in Node.js and Workers alike.
+- **Gemini:** a plain `fetch` to its OpenAI-compatible endpoint, unchanged.
+
+## Deploy on a free tier (Vercel, until 2026-10-31)
 
 Vercel Hobby, Neon Free, the Gemini free tier, Vercel Cron (daily) and Stripe test mode all cost $0:
 1. The pipeline runs `.provision` through the credential broker:
@@ -332,7 +370,7 @@ Vercel Hobby, Neon Free, the Gemini free tier, Vercel Cron (daily) and Stripe te
      - a downloaded slide has no PREVIEW;
      - Stripe dashboard → the event → "Resend": the response is `already_unlocked`;
      - `/privacy` and `/terms` load, and the footer is on every page.
-   - If photo uploads answer 503 `photos_unavailable`, sharp didn't load on Vercel. Pinning `sharp` to `0.34.4` is the known fix (see M2 review).
+   - If photo uploads answer 503 `photos_unavailable`, Photon's WebAssembly didn't load (the Worker logs say why).
 
 **Taking real money is not free on Vercel.** Vercel's fair-use guidelines count "requesting or processing payment from visitors" as commercial use, which Hobby doesn't allow. So M4 ships in **Stripe test mode**, where no real money moves. Going live is David's call, requested in `.provision`. Either:
 - move to Vercel Pro; or

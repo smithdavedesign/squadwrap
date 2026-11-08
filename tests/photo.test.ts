@@ -3,7 +3,7 @@ import { crc32 } from 'node:zlib'
 import sharp from 'sharp'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { Db } from '../lib/db'
-import { PHOTO_MAX_PIXELS, PhotoError, decodePhotoField, normalizePhoto } from '../lib/photo'
+import { PHOTO_MAX_PIXELS, PhotoError, decodePhotoField, normalizePhoto, readHeader } from '../lib/photo'
 import { LIMITS } from '../lib/prompts'
 import {
   answersFor,
@@ -97,6 +97,41 @@ describe('normalizePhoto', () => {
     expect(after).toMatchObject({ width: 200, height: 400 })
     expect(after.orientation).toBeUndefined()
     expect(after.exif).toBeUndefined()
+  })
+
+  // Four coloured quadrants, so every rotation and mirror lands each colour in a different corner.
+  async function quadrants(orientation: number): Promise<Buffer> {
+    const [w, h] = [60, 30]
+    const raw = Buffer.alloc(w * h * 3)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const colour = y < h / 2 ? (x < w / 2 ? [255, 0, 0] : [0, 255, 0]) : x < w / 2 ? [0, 0, 255] : [255, 255, 0]
+        raw.set(colour, (y * w + x) * 3)
+      }
+    }
+    return sharp(raw, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 95 }).withMetadata({ orientation }).toBuffer()
+  }
+
+  const corners = async (jpeg: Buffer) => {
+    const { data, info } = await sharp(jpeg).raw().toBuffer({ resolveWithObject: true })
+    const at = (x: number, y: number) => Array.from(data.subarray((y * info.width + x) * 3, (y * info.width + x) * 3 + 3)).map((v) => (v > 127 ? 1 : 0))
+    const [r, b] = [info.width - 3, info.height - 3]
+    return { width: info.width, height: info.height, corners: [at(2, 2), at(r, 2), at(2, b), at(r, b)] }
+  }
+
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('turns EXIF orientation %i upright, exactly as sharp does', async (orientation) => {
+    const photo = await quadrants(orientation)
+    const expected = await corners(await sharp(photo, { autoOrient: true }).jpeg().toBuffer())
+    expect(await corners(await normalizePhoto(photo))).toEqual(expected)
+  })
+
+  it.each(['jpeg', 'png', 'webp'] as const)('reads a %s header’s size without decoding it', async (format) => {
+    for (const [width, height] of [[1, 1], [640, 480], [123, 4567]]) {
+      const bytes = await solid(width, height).toFormat(format).toBuffer()
+      expect(readHeader(bytes, format)).toMatchObject({ width, height })
+    }
+    const lossless = await solid(300, 200, 4, { r: 1, g: 2, b: 3, alpha: 0.5 }).webp({ lossless: true }).toBuffer()
+    expect(readHeader(lossless, 'webp')).toMatchObject({ width: 300, height: 200 })
   })
 
   it('accepts PNG and WebP', async () => {

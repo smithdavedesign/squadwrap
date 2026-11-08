@@ -41,7 +41,16 @@ export function externalReferrer(referrer: string, origin: string): string | nul
 }
 
 /**
- * Production deployments only (Vercel's VERCEL_ENV, which Next.js inlines as NEXT_PUBLIC_VERCEL_ENV at build time),
+ * Which deployment this build is, on either host: `npm run cf:build` (the Cloudflare Worker) sets
+ * NEXT_PUBLIC_DEPLOY_ENV=production; Vercel sets NEXT_PUBLIC_VERCEL_ENV. Next.js inlines both at build time, into the
+ * browser bundle and the server's, so each must be written out by its full literal name.
+ */
+export function deployEnv(): string | undefined {
+  return process.env.NEXT_PUBLIC_DEPLOY_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV
+}
+
+/**
+ * Production deployments only (the Cloudflare Worker, or Vercel's production deployment: deployEnv()),
  * never automated browsers (bots, screenshot runs) or the owner's opted-out browser. Storage that can't be read
  * counts as "don't": the opt-out couldn't be honoured, nor a visit counted only once.
  */
@@ -89,20 +98,19 @@ function sendOnce(win: SignalWindow, vercelEnv: string | undefined, kind: Signal
 /** Tests pass both; the browser uses the defaults below. */
 type SignalTarget = { win?: SignalWindow; vercelEnv?: string }
 
-// `process.env.NEXT_PUBLIC_VERCEL_ENV` must be spelled out like this for Next.js to inline it into the browser bundle.
 
 /** "visit", once per browser session. */
-export function signalVisit({ win = window, vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV }: SignalTarget = {}): boolean {
+export function signalVisit({ win = window, vercelEnv = deployEnv() }: SignalTarget = {}): boolean {
   return sendOnce(win, vercelEnv, 'visit', win.sessionStorage, VISITED_KEY)
 }
 
 /** "activate", once per browser: the first awards this browser makes. */
-export function signalActivate({ win = window, vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV }: SignalTarget = {}): boolean {
+export function signalActivate({ win = window, vercelEnv = deployEnv() }: SignalTarget = {}): boolean {
   return sendOnce(win, vercelEnv, 'activate', win.localStorage, ACTIVATED_KEY)
 }
 
 /** "checkout", on every click on Buy. */
-export function signalCheckout({ win = window, vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV }: SignalTarget = {}): boolean {
+export function signalCheckout({ win = window, vercelEnv = deployEnv() }: SignalTarget = {}): boolean {
   if (!signalsAllowed(win, vercelEnv)) return false
   send(win, 'checkout')
   return true

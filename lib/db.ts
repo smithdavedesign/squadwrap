@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises'
+import { Pool as NeonPool, neon } from '@neondatabase/serverless'
 import { attachDatabasePool } from '@vercel/functions'
-import { Pool, type PoolClient } from 'pg'
+import { Pool } from 'pg'
 
 export interface Queryable {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<{ rows: T[] }>
@@ -88,7 +89,9 @@ export async function migrate(db: Db): Promise<void> {
   })
 }
 
-function pgQueryable(client: Pool | PoolClient): Queryable {
+type PgLike = { query(text: string, params?: unknown[]): Promise<{ rows: unknown[] }> }
+
+function pgQueryable(client: PgLike): Queryable {
   return {
     async query<T>(text: string, params?: unknown[]) {
       const result = await client.query(text, params)
@@ -104,21 +107,53 @@ export function createPgDb(connectionString: string): Db {
   return {
     query: pgQueryable(pool).query,
     async tx(fn) {
-      const client = await pool.connect()
-      // If ROLLBACK itself fails the connection is in an unknown state: destroy it instead of reusing it.
-      let broken: Error | undefined
+      return inTransaction(await pool.connect(), fn)
+    },
+  }
+}
+
+/** BEGIN, `fn`, then COMMIT, or ROLLBACK if it throws; the client goes back to its pool either way. */
+async function inTransaction<T>(client: PgLike & { release(err?: Error): void }, fn: (q: Queryable) => Promise<T>): Promise<T> {
+  // If ROLLBACK itself fails the connection is in an unknown state: destroy it instead of reusing it.
+  let broken: Error | undefined
+  try {
+    await client.query('BEGIN')
+    const result = await fn(pgQueryable(client))
+    await client.query('COMMIT')
+    return result
+  } catch (err) {
+    await client.query('ROLLBACK').catch((rollbackErr: Error) => {
+      broken = rollbackErr
+    })
+    throw err
+  } finally {
+    client.release(broken)
+  }
+}
+
+/** True inside a Cloudflare Worker, which identifies itself this way (Node.js reports `Node.js/<version>`). */
+export function onCloudflareWorkers(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+}
+
+/**
+ * The Cloudflare Worker: Neon's serverless driver. A Worker can't reuse a socket another request opened, so nothing
+ * here holds one between requests: single queries go over HTTPS (one fetch each), and each transaction opens its own
+ * WebSocket connection (Neon's `Pool`, node-postgres underneath, so types and BYTEA behave as with `pg`) and closes it
+ * before returning.
+ */
+export function createNeonDb(connectionString: string): Db {
+  const sql = neon(connectionString)
+  return {
+    async query<T>(text: string, params?: unknown[]) {
+      return { rows: (await sql.query(text, params ?? [])) as T[] }
+    },
+    async tx(fn) {
+      const pool = new NeonPool({ connectionString, max: 1 })
       try {
-        await client.query('BEGIN')
-        const result = await fn(pgQueryable(client))
-        await client.query('COMMIT')
-        return result
-      } catch (err) {
-        await client.query('ROLLBACK').catch((rollbackErr: Error) => {
-          broken = rollbackErr
-        })
-        throw err
+        return await inTransaction(await pool.connect(), fn)
       } finally {
-        client.release(broken)
+        await pool.end().catch(() => {})
       }
     },
   }
@@ -158,11 +193,14 @@ export type DbTarget = { kind: 'postgres'; url: string } | { kind: 'pglite'; dir
 /**
  * Where the app's data lives: Postgres at DATABASE_URL; otherwise, outside production, the local PGlite in
  * .data/pglite. PGLITE_DIR opts a local production build (`next start`, used by `npm run screenshots`) into PGlite
- * too, but never on a Vercel deployment (VERCEL is set there), where it would be a throwaway per-instance database.
+ * too, but never on a Vercel deployment (VERCEL is set there), where it would be a throwaway per-instance database,
+ * nor on the Cloudflare Worker.
  * Production without either is a configuration error.
  */
-export function defaultDbTarget(env: Record<string, string | undefined>): DbTarget | null {
+export function defaultDbTarget(env: Record<string, string | undefined>, worker = onCloudflareWorkers()): DbTarget | null {
   if (env.DATABASE_URL) return { kind: 'postgres', url: env.DATABASE_URL }
+  // A Worker has no filesystem for PGlite either.
+  if (worker) return null
   const localDir = env.VERCEL ? '' : env.PGLITE_DIR?.trim()
   const dir = localDir || (env.NODE_ENV !== 'production' ? '.data/pglite' : '')
   return dir ? { kind: 'pglite', dir } : null
@@ -171,7 +209,8 @@ export function defaultDbTarget(env: Record<string, string | undefined>): DbTarg
 async function openDefaultDb(): Promise<Db> {
   const target = defaultDbTarget(process.env)
   if (!target) throw new ConfigError('DATABASE_URL is not set')
-  const db = target.kind === 'postgres' ? createPgDb(target.url) : await createPgliteDb(target.dir)
+  const db =
+    target.kind === 'pglite' ? await createPgliteDb(target.dir) : onCloudflareWorkers() ? createNeonDb(target.url) : createPgDb(target.url)
   await migrate(db)
   return db
 }

@@ -1,10 +1,10 @@
-// sharp is a native module. If it fails to load on a deploy (a known failure mode for Next.js + Turbopack on
-// Vercel), only photo uploads may break: everything else, including submissions without a photo, keeps working.
-// This file must not import sharp itself (nor tests/helpers.ts, which does).
+// Photos are processed by Photon, a WebAssembly module loaded on first use. If it fails to load on a deploy (a missing
+// .wasm file in the Worker, say), only photo uploads may break: everything else, including submissions without a
+// photo, keeps working.
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-vi.mock('sharp', () => {
-  throw new Error('ERR_DLOPEN_FAILED: libvips-cpp.so.8: cannot open shared object file')
+vi.mock('@cf-wasm/photon', () => {
+  throw new Error('No such module "photon_rs_bg.wasm"')
 })
 
 const { createPgliteDb, migrate } = await import('../lib/db')
@@ -15,7 +15,7 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const pngLike = Buffer.concat([PNG_SIGNATURE, Buffer.alloc(64)])
 const answers = { cancels: 'Jo', lore: 'karaoke', mainCharacter: 'last train', threeWords: 'loud', secretAward: 'Lurker' }
 
-describe('when sharp cannot be loaded', () => {
+describe('when Photon cannot be loaded', () => {
   let db: Awaited<ReturnType<typeof createPgliteDb>>
   beforeAll(async () => {
     db = await createPgliteDb()
