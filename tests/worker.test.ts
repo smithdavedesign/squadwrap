@@ -25,6 +25,8 @@ describe('wrangler.jsonc', () => {
     expect(config.services).toContainEqual({ binding: 'WORKER_SELF_REFERENCE', service: 'squadwrap' })
     // The broker refuses a config with a build command: the build is `npm run cf:build`, run beforehand.
     expect(config.build).toBeUndefined()
+    // Plain settings only: every secret is a Worker secret, never in this file.
+    expect(Object.keys(config.vars ?? {})).toEqual(['LLM_MODEL'])
   })
 
   it('schedules every Vercel Cron job as a Cron Trigger, each mapped to its route', async () => {
