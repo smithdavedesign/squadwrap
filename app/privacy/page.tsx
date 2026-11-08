@@ -64,7 +64,7 @@ export default function PrivacyPage() {
           the law requires.
         </li>
         <li>
-          <strong>Hosting.</strong> The app runs on Vercel and the data lives in a Neon Postgres database. Their request
+          <strong>Hosting.</strong> The app runs on Cloudflare Workers and the data lives in a Neon Postgres database. Their request
           logs contain page addresses, and so the private links.
         </li>
       </ul>

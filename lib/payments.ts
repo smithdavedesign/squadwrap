@@ -12,6 +12,9 @@ export interface Payments {
   createCheckout(input: CheckoutInput): Promise<{ url: string }>
 }
 
+/** Stripe's signature check over Web Crypto (SubtleCrypto), available in Node.js and in Workers alike. */
+const webCrypto = Stripe.createSubtleCryptoProvider()
+
 /** Tags our sessions, for whoever reads a Stripe account that other apps share. */
 const APP_TAG = 'squadwrap'
 
@@ -145,8 +148,9 @@ export async function handleStripeWebhook(
   if (!secret?.trim()) throw new AppError(503, 'webhook_not_configured', 'Stripe webhooks aren’t set up on this server yet.')
   let event: Stripe.Event
   try {
-    // Checks the HMAC (timing-safe) and that the signature is less than 5 minutes old, then parses the body.
-    event = Stripe.webhooks.constructEvent(payload, signature ?? '', secret.trim())
+    // Checks the HMAC (timing-safe) and that the signature is less than 5 minutes old, then parses the body. Web Crypto,
+    // so it runs the same in Node.js and on the Cloudflare Worker (where Stripe's synchronous check isn't available).
+    event = await Stripe.webhooks.constructEventAsync(payload, signature ?? '', secret.trim(), undefined, webCrypto)
   } catch {
     throw new AppError(400, 'bad_signature', 'The Stripe signature doesn’t match this request.')
   }

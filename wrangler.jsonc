@@ -1,0 +1,28 @@
+// squadwrap on Cloudflare Workers (Workers Paid), through the OpenNext adapter: `npm run cf:build` turns the Next.js
+// build into .open-next/worker.js plus static assets; cloudflare/worker.mjs wraps it to add the Cron Trigger. Vercel
+// ignores this file, so both hosts build from the same code. Deploy with the credential broker, which injects the token:
+//   provision cloudflare deploy squadwrap <this checkout>
+// Secrets are Worker secrets, never in this file: `provision cloudflare secret squadwrap <KEY>` for DATABASE_URL,
+// GOOGLE_API_KEY, STRIPE_PAYMENT_LINK, STRIPE_WEBHOOK_SECRET and, once David stores it, CRON_SECRET.
+// Local runs read secrets from .dev.vars (gitignored).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "squadwrap",
+  "main": "cloudflare/worker.mjs",
+  "compatibility_date": "2026-10-15",
+  // nodejs_compat: Buffer, node:crypto, node:zlib and the rest of the Node APIs Next.js and the app use. It also
+  // fills process.env from vars and secrets, which is where the app reads them.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    // OpenNext calls the Worker itself for some cache work; the name must match "name" above.
+    { "binding": "WORKER_SELF_REFERENCE", "service": "squadwrap" }
+  ],
+  // Vercel Cron's schedule (vercel.json), run by cloudflare/scheduled.mjs: the 30-day deletion job, daily at 04:17 UTC.
+  "triggers": { "crons": ["17 4 * * *"] },
+  "workers_dev": true,
+  "observability": { "enabled": true }
+}

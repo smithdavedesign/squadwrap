@@ -2,6 +2,7 @@
 // the JSON-LD. Server-only (pages, robots.ts, sitemap.ts).
 import type { Metadata } from 'next'
 import { UNLOCK_PRICE } from './prompts'
+import { deployEnv } from './signal'
 
 export const SITE_NAME = 'squadwrap'
 export const TAGLINE = 'Friends answer five silly prompts, and everyone gets an award for the year.'
@@ -14,13 +15,21 @@ export const ISSUES_URL = `${REPO_URL}/issues`
 export const PUBLIC_PATHS = ['/', '/privacy', '/terms'] as const
 export type PublicPath = (typeof PUBLIC_PATHS)[number]
 
+/** The Cloudflare Worker's address (since 2026-11-08), where squadwrap runs in production. */
+export const WORKER_HOST = 'squadwrap.1426davejobs.workers.dev'
+
 /**
- * The site's public origin, for canonical URLs, the sitemap and robots.txt. On Vercel that's the project's production
- * domain (a system env var, set on preview deploys too, so they point search engines at production), which becomes the
- * custom domain once one is made the production domain. Locally, localhost.
+ * The production host name: on Vercel the project's production domain (a system env var, set on preview deploys too,
+ * so they point at production; it becomes the custom domain once one is made the production domain); in the Cloudflare
+ * Worker's build (`deploy` is 'production' without that Vercel variable) the Worker's address. Otherwise none.
  */
-export function siteUrl(env: Record<string, string | undefined> = process.env): URL {
-  const host = env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+export function productionHost(env: Record<string, string | undefined> = process.env, deploy: string | undefined = deployEnv()): string | null {
+  return env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || (deploy === 'production' ? WORKER_HOST : null)
+}
+
+/** The site's public origin, for canonical URLs, the sitemap and robots.txt: the production host, else localhost. */
+export function siteUrl(env: Record<string, string | undefined> = process.env, deploy: string | undefined = deployEnv()): URL {
+  const host = productionHost(env, deploy)
   return new URL(host ? `https://${host}` : `http://localhost:${env.PORT?.trim() || 3000}`)
 }
 
