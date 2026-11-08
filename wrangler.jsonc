@@ -23,6 +23,10 @@
   ],
   // Vercel Cron's schedule (vercel.json), run by cloudflare/scheduled.mjs: the 30-day deletion job, daily at 04:17 UTC.
   "triggers": { "crons": ["17 4 * * *"] },
+  // Not secrets: plain settings the app reads from process.env. Gemini's default Flash alias (gemini-flash-latest)
+  // didn't answer within the 45 s timeout from the Worker (2026-11-08); Flash-Lite doesn't think by default and stays on
+  // the free tier. On Vercel this was the LLM_MODEL env var.
+  "vars": { "LLM_MODEL": "gemini-flash-lite-latest" },
   "workers_dev": true,
   "observability": { "enabled": true }
 }
