@@ -143,6 +143,8 @@ describe('createOpenAiCompatibleModel', () => {
     expect(body.model).toBe('some-free-model')
     expect(body.messages).toEqual([{ role: 'user', content: 'hi' }])
     expect(body.response_format).toEqual({ type: 'json_object' })
+    // Not Gemini: no reasoning_effort, which other endpoints may refuse.
+    expect(body).not.toHaveProperty('reasoning_effort')
   })
 
   it('sends no Authorization header when there is no key (e.g. local Ollama)', async () => {
@@ -194,7 +196,7 @@ describe('createOpenAiCompatibleModel', () => {
 describe('modelConfigFromEnv', () => {
   it('uses Gemini’s OpenAI-compatible endpoint and the default free model when only GOOGLE_API_KEY is set', () => {
     const key = fakeKey()
-    expect(modelConfigFromEnv({ GOOGLE_API_KEY: key })).toEqual({ baseUrl: GEMINI_OPENAI_BASE_URL, apiKey: key, model: DEFAULT_GEMINI_MODEL })
+    expect(modelConfigFromEnv({ GOOGLE_API_KEY: key })).toEqual({ baseUrl: GEMINI_OPENAI_BASE_URL, apiKey: key, model: DEFAULT_GEMINI_MODEL, reasoningEffort: 'low' })
   })
 
   it('lets LLM_MODEL pick the Gemini model', () => {
@@ -211,5 +213,30 @@ describe('modelConfigFromEnv', () => {
     expect(modelConfigFromEnv({ LLM_BASE_URL: 'http://localhost:4000' })).toBeNull()
     expect(modelConfigFromEnv({})).toBeNull()
     expect(modelConfigFromEnv({ GOOGLE_API_KEY: '' })).toBeNull()
+  })
+})
+
+describe('Gemini’s thinking and failure reasons', () => {
+  it('asks Gemini for low reasoning effort, so the answer comes back well within the timeout', async () => {
+    const seen: RequestInit[] = []
+    const config = modelConfigFromEnv({ GOOGLE_API_KEY: 'AIza-test' })!
+    const model = createOpenAiCompatibleModel({
+      ...config,
+      fetch: async (_url, init) => {
+        seen.push(init!)
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{}' } }] }), { status: 200 })
+      },
+    })
+    await model.complete([{ role: 'user', content: 'hi' }])
+    expect(JSON.parse(String(seen[0].body)).reasoning_effort).toBe('low')
+  })
+
+  it.each([
+    ['a timeout', async () => { throw Object.assign(new Error('t'), { name: 'TimeoutError' }) }, 'timed out'],
+    ['a network failure', async () => { throw new TypeError('fetch failed') }, 'unreachable'],
+    ['an HTTP error', async () => new Response('quota', { status: 429 }), 'HTTP 429'],
+  ])('says why on %s', async (_label, fetch, reason) => {
+    const model = createOpenAiCompatibleModel({ baseUrl: 'https://llm.example.test', model: 'm', fetch: fetch as never })
+    await expect(model.complete([])).rejects.toMatchObject({ name: 'ModelUnavailableError', reason })
   })
 })

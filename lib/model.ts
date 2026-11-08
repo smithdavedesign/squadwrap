@@ -15,6 +15,13 @@ export class ModelOutputError extends Error {
 /** The model could not be reached, timed out or returned an HTTP error. */
 export class ModelUnavailableError extends Error {
   override name = 'ModelUnavailableError'
+  constructor(
+    message: string,
+    /** What went wrong, safe to show: "timed out", "unreachable" or "HTTP 429". */
+    readonly reason?: string,
+  ) {
+    super(message)
+  }
 }
 
 export type Award = { displayName: string; title: string; citation: string }
@@ -121,7 +128,12 @@ function clamp(text: string, max: number): string {
   return `${cut.trimEnd()}…`
 }
 
-export type ModelConfig = { baseUrl: string; apiKey?: string; model: string }
+/**
+ * `reasoningEffort` is the OpenAI-compatible `reasoning_effort`. Gemini's Flash models think before answering by
+ * default, and on the free tier that made a 3-friend request run past the 45 s timeout from the Cloudflare Worker
+ * (2026-11-08); "low" keeps a small thinking budget. Sent only when set, since other endpoints may refuse the field.
+ */
+export type ModelConfig = { baseUrl: string; apiKey?: string; model: string; reasoningEffort?: 'low' }
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
 /**
@@ -135,7 +147,7 @@ export function modelConfigFromEnv(env: Record<string, string | undefined>): Mod
   const baseUrl = read('LLM_BASE_URL')
   if (baseUrl) return model ? { baseUrl, apiKey: read('LLM_API_KEY'), model } : null
   const googleKey = read('GOOGLE_API_KEY')
-  if (googleKey) return { baseUrl: GEMINI_OPENAI_BASE_URL, apiKey: googleKey, model: model ?? DEFAULT_GEMINI_MODEL }
+  if (googleKey) return { baseUrl: GEMINI_OPENAI_BASE_URL, apiKey: googleKey, model: model ?? DEFAULT_GEMINI_MODEL, reasoningEffort: 'low' }
   return null
 }
 
@@ -159,13 +171,15 @@ export function createOpenAiCompatibleModel(
             messages,
             response_format: { type: 'json_object' },
             temperature: 0.9,
+            ...(config.reasoningEffort && { reasoning_effort: config.reasoningEffort }),
           }),
           signal: AbortSignal.timeout(config.timeoutMs ?? REQUEST_TIMEOUT_MS),
         })
       } catch (err) {
-        throw new ModelUnavailableError(`The model request failed (${(err as Error).name}).`)
+        const name = (err as Error).name
+        throw new ModelUnavailableError(`The model request failed (${name}).`, name === 'TimeoutError' ? 'timed out' : 'unreachable')
       }
-      if (!res.ok) throw new ModelUnavailableError(`The model returned HTTP ${res.status}.`)
+      if (!res.ok) throw new ModelUnavailableError(`The model returned HTTP ${res.status}.`, `HTTP ${res.status}`)
       const data: unknown = await res.json().catch(() => null)
       const content = isRecord(data) && Array.isArray(data.choices) ? data.choices[0]?.message?.content : undefined
       if (typeof content !== 'string') throw new ModelOutputError('The model response has no message text.')

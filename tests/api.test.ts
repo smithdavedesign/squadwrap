@@ -1,5 +1,5 @@
 // Edge and error paths of the M1 API beyond the exit criteria.
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Db } from '../lib/db'
 import { ModelUnavailableError } from '../lib/model'
 import { LIMITS } from '../lib/prompts'
@@ -194,6 +194,14 @@ describe('POST /groups/:id/generate', () => {
     expect(res.status).toBe(502)
     expect(res.body.error.code).toBe('model_unavailable')
     expect(await countAwards(db, group.id)).toBe(0)
+  })
+
+  it('names the reason of a model failure in the 502, never the model’s own text', async () => {
+    useDeps(db, stubModel(() => Promise.reject(new ModelUnavailableError('The model returned HTTP 429.', 'HTTP 429'))))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const group = await groupWith(['Ana', 'Ben', 'Cat'])
+    const res = await api('POST', `/groups/${group.id}/generate`)
+    expect(res.body.error.message).toBe('The AI is not answering right now (HTTP 429). Try again in a minute.')
   })
 
   it('treats any unexpected error from the model client as 502', async () => {
